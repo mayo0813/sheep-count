@@ -166,6 +166,20 @@ function nz(x,y){x=(x%NN+NN)%NN;y=(y%NN+NN)%NN;const x0=x|0,y0=y|0,fx_=x-x0,fy=y
 const fbm=(x,y)=>nz(x,y)*.5+nz(x*2.1+17,y*2.1)*.3+nz(x*4.3,y*4.3+31)*.2;
 const GA=(u,v,a,b,sx,sy)=>{const p=(u-a)/sx,q=(v-b)/sy;return Math.exp(-(p*p+q*q))};
 const smt=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t)};
+function eyeShade(F,u,v,ex,ey,rx,ry,pr,n){
+  const dx=(u-ex)/rx,dy=(v-ey)/ry,ed=dx*dx+dy*dy,sq=Math.sqrt(ed);
+  F-=.32*Math.exp(-((sq-1.3)**2)/.08);F-=.6*Math.exp(-((sq-1.04)**2)/.014);
+  if(ed<1){F=.66-.28*smt(.3,1,ed)+(n-.5)*.14-.38*smt(-.25,-1,dy)+.06*smt(.2,1,dy);
+    const pp=Math.hypot((u-ex)/(rx*pr),(v-ey-ry*.08)/(rx*pr*.95))+(n-.5)*.08;if(pp<1)F=.02+.08*smt(.72,1,pp)}
+  return F}
+function gapeMouth(F,u,v,mx,my,mw,mh){
+  const mt=(v-my)/mh,mc=mx+mw*.15*Math.sin(mt*2.2+.6),mwd=mw*(1-.32*smt(-.4,1,mt))*(u>mc?1.12:.9),px=(u-mc)/mwd;
+  if(Math.abs(px)>2||mt<-1.6||mt>1.6)return F;
+  const rad=Math.sqrt(px*px+(mt<0?Math.pow(Math.abs(mt),2.8):mt*mt)),ang=Math.atan2(mt,px),
+    bd=1+.38*(fbm(Math.cos(ang)*1.6+5,Math.sin(ang)*1.6+5)-.5)+.1*(nz(ang*9+2,4)-.5),q=rad/bd;
+  F+=.14*Math.exp(-((q-1.3)**2)/.05);F-=.6*Math.exp(-((q-1)**2)/.04);if(mt>.6)F-=.15*Math.exp(-((q-1.15)**2)/.03);
+  if(q<1)F=.012*smt(.4,1,q);
+  return F}
 function drawFace(g0,w,h){
   const k=1-scareT/scareDur,buf=new Float32Array(w*h);
   const near=k>.45,S=Math.min(w*1.25,h*.75)*(near?1.25:.85),ox=w/2,oy=h*(near?.27:.33);
@@ -192,19 +206,8 @@ function drawFace(g0,w,h){
     const e=hw>0?Math.abs(hu)/hw:9;
     if(e<1){
       let F=.36+.62*Math.sqrt(Math.max(0,1-e*e))+.08*GA(hu,hv,0,-.25,.12,.1)+(nz(hu*90+5,hv*25)-.5)*.18+(n-.5)*.12;
-      for(const s of [-1,1]){const ex=hu-s*.155,ey=hv+.1,ed=(ex/.052)**2+(ey/(ey<0?.04:.048))**2;
-        F-=.28*Math.exp(-((Math.sqrt(ed)-1.15)**2)/.05);
-        if(ed<1)F=.02+.07*smt(.35,1,ed)}
-      if(!near)F-=.12*GA(hu,hv,0,.3,.08,.035);
-      else{
-        const my=.31,mh=.22,mt=(hv-my)/mh,mc=.012+.018*Math.sin(mt*2.2+.6),
-          mwd=.09*(1-.32*smt(-.4,1,mt))*(hu>mc?1.12:.9),px=(hu-mc)/mwd,
-          rad=Math.sqrt(px*px+(mt<0?Math.pow(Math.abs(mt),2.8):mt*mt)),ang=Math.atan2(mt,px),
-          bd=1+.38*(fbm(Math.cos(ang)*1.6+5,Math.sin(ang)*1.6+5)-.5)+.1*(nz(ang*9+2,4)-.5),q=rad/bd;
-        F+=.14*Math.exp(-((q-1.3)**2)/.05);F-=.6*Math.exp(-((q-1)**2)/.04);
-        if(mt>.6)F-=.15*Math.exp(-((q-1.15)**2)/.03);
-        if(q<1)F=.012*smt(.4,1,q);
-      }
+      F=eyeShade(F,hu,hv,-.155,-.105,.07,.062,.64,n);F=eyeShade(F,hu,hv,.152,-.095,.066,.059,.64,n);
+      if(near)F=gapeMouth(F,hu,hv,0,.31,.09,.22);else F-=.12*GA(hu,hv,0,.3,.08,.035);
       F*=(.8+.25*hu/hw)*smt(1,.8,e);
       L=F;
     }
@@ -296,7 +299,7 @@ function badEnding(type){
     showEnd('?','그날 밤 당신은 하나를 더 셌어요.\n세지 말았어야 할 하나를.\n\n그것도 당신을 세기 시작했어요.','엔딩 2 · 세지 마세요',10600);
   }else{
     say('그럼 우리가 감겨줄게요.');
-    later(1500,()=>{edgeHands=true;allStare=true;tone(60,2.5,'sine',.15)});
+    later(1500,()=>{allStare=true;tone(60,2.5,'sine',.15)});
     later(3500,()=>{forceClose=true});
     later(5500,()=>say('쉿.\n이제 우리가 세어줄게요.'));
     later(9500,()=>{$('say').style.opacity=0;$('hud').style.opacity=0});
@@ -333,34 +336,59 @@ function yOff(s){if(s.kind==='tall')return 0;const J=32,d=s.x-fx;if(Math.abs(d)>
 function body(s){const r=s.kind==='tall'?7:9.5;return{bx:s.x,by:gy+yOff(s)-legLen(s)-r*.55,r}}
 function staring(s){return s.fs||allStare||s.stop||s.paused||s.kind==='tall'}
 
+function renderSheep(r,view,pale,sd){
+  const side=view==='side',W=Math.ceil(r*(side?3.8:2.8)),H=Math.ceil(r*(side?2.7:3.2)),ox=side?r*1.45:W/2,oy=side?r*1.45:r*2;
+  const c=document.createElement('canvas');c.width=W;c.height=H;c.ox=ox;c.oy=oy;
+  const g=c.getContext('2d'),img=g.createImageData(W,H),d=img.data,sx=sd*17.3+3;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const u=(x+.5-ox)/r,v=(y+.5-oy)/r;let L=0,a=0,rd=0;
+    const brx=side?1.22:1.02,bry=side?.86:.9,bx0=side?-.12:0;
+    const lump=(fbm(u*2.4+sx,v*2.4)-.5)*.45+(nz(u*10+sx,v*10)-.5)*.2,e=Math.sqrt(((u-bx0)/brx)**2+(v/bry)**2)+lump;
+    if(e<1){const n=Math.sqrt(Math.max(0,1-e*e)),curl=.5+.5*Math.sin(fbm(u*3.2+sx,v*3.2)*24);
+      L=(.16+.8*n*(.78-.38*v))*(.7+.4*curl)-.28*smt(.15,.9,v);a=smt(1,.86,e);
+      if(pale&&v>-.2&&nz(u*5+sx,v*5+7)>.66)rd=.45+.35*nz(u*22,v*22)}
+    const fur=(nz(u*14+sx,v*14)-.5);
+    if(side){
+      const nk=Math.sqrt(((u-1.02)/.34)**2+((v+.18)/.36)**2)+(nz(u*9+sx,v*9)-.5)*.25;
+      if(nk<1){const n=Math.sqrt(Math.max(0,1-nk*nk)),curl=.5+.5*Math.sin(fbm(u*3.2+sx,v*3.2)*24);L=(.16+.75*n*(.78-.38*v))*(.7+.4*curl)-.2*smt(.1,.5,v);a=Math.max(a,smt(1,.85,nk))}
+      const ex=u-.98,ey=v+.36,ea=-1.25,eu=ex*Math.cos(ea)+ey*Math.sin(ea),ev=-ex*Math.sin(ea)+ey*Math.cos(ea),ee=(eu/.33)**2+(ev/.09)**2+fur*.3;
+      const hx=u-1.3,hy=v+.28,ca=Math.cos(.48),sa=Math.sin(.48),hu=hx*ca+hy*sa,hv=-hx*sa+hy*ca,wv=.33*(1-.22*smt(-.35,.6,hu)),he=Math.sqrt((hu/(hu>0?.6:.42))**2+(hv/wv)**2)+fur*.12;
+      if(he<1){const n=Math.sqrt(1-he*he);L=pale?.5+.38*n:.07+.2*n+.09*smt(.15,-.2,hv);a=Math.max(a,smt(1,.82,he));rd=0;
+        const eu2=(hu+.1)/.085,ev2=(hv+.12)/.06;if(eu2*eu2+ev2*ev2<1)L=pale?.02:(Math.abs(ev2)<.38?.03:.6)}
+      if(ee<1){L=pale?.42+.2*(1-ee):.08+.14*(1-ee);a=Math.max(a,smt(1,.75,ee));rd=0}
+      const tk=Math.sqrt(((u-1.08)/.2)**2+((v+.58)/.14)**2)+(nz(u*12,v*12)-.5)*.35;
+      if(tk<1){const curl=.5+.5*Math.sin(fbm(u*4+sx,v*4)*22);L=(.3+.55*Math.sqrt(1-Math.min(1,tk*tk)))*(.7+.4*curl);a=Math.max(a,smt(1,.8,tk));rd=0}
+    }else{
+      for(const k of [-1,1]){const ex=u-k*.5,ey=v+.82,ea=k*.42,eu=ex*Math.cos(ea)+ey*Math.sin(ea),ev=-ex*Math.sin(ea)+ey*Math.cos(ea),ee=(eu/.24)**2+(ev/.08)**2+fur*.3;
+        if(ee<1){L=pale?.4+.2*(1-ee):.08+.14*(1-ee);a=Math.max(a,smt(1,.75,ee));rd=0}}
+      const hy=v+.6,hw=.34*(1-.3*smt(-.35,.6,hy)),he=Math.sqrt((u/hw)**2+(hy/(hy>0?.66:.5))**2)+fur*.12;
+      if(he<1){const n=Math.sqrt(1-he*he);L=pale?(.5+.4*n)*(.85+.25*u/hw):.07+.2*n+.07*GA(u,hy,0,-.1,.08,.3);a=Math.max(a,smt(1,.82,he));rd=0;
+        if(pale){const n3=nz(u*20+sx,hy*20);L=eyeShade(L,u,hy,-.125,-.2,.1,.085,.72,n3);L=eyeShade(L,u,hy,.12,-.17,.092,.078,.72,n3);L=gapeMouth(L,u,hy,.01,.3,.1,.2)}
+        else{for(const k of [-1,1]){const eu=(u-k*.24)/.075,ev=(hy+.16)/.055;if(eu*eu+ev*ev<1)L=Math.abs(ev)<.38?.03:.62}}}
+      const tk=Math.sqrt((u/.24)**2+((v+1.08)/.14)**2)+(nz(u*12,v*12)-.5)*.35;
+      if(tk<1){const curl=.5+.5*Math.sin(fbm(u*4+sx,v*4)*22);L=(.3+.55*Math.sqrt(1-Math.min(1,tk*tk)))*(.7+.4*curl);a=Math.max(a,smt(1,.8,tk));rd=0}
+    }
+    if(a>0){L+=fur*.12;const p=(y*W+x)*4;if(rd>0){d[p]=60+rd*150|0;d[p+1]=12;d[p+2]=12}else{const cc=clamp(L,0,1)*255|0;d[p]=d[p+1]=d[p+2]=cc}d[p+3]=clamp(a,0,1)*255|0}
+  }
+  g.putImageData(img,0,0);return c;
+}
+const SPR={};
+function sheepSprite(r,view,pale,sd){const k=r+view+pale+sd;return SPR[k]||(SPR[k]=renderSheep(r,view,pale,sd))}
 function drawSheep(s){
-  const {bx,by,r}=body(s),ll=legLen(s),air=yOff(s)<-1,p2=isP2(),st=staring(s),pale=p2||s.kind==='tall';
-  cx.strokeStyle=pale?'#b4b4b0':'#0c0c0c';cx.lineWidth=1;
+  const {bx,by,r}=body(s),ll=legLen(s),air=yOff(s)<-1,p2=isP2(),st=staring(s),pale=p2||s.kind==='tall',k=r/9.5;
+  if(s.sd===undefined)s.sd=R0()*3|0;
+  const legX=st?[-.48,-.17,.17,.48]:[-.8,-.6,.6,.8];
+  cx.lineWidth=1;
   for(let i=0;i<4;i++){
-    const ox=(i<2?-1:1)*r*.55+(i%2?1.5:-1.5),sw=air||st?0:Math.sin(s.leg+i*1.57)*2.2,x0=bx+ox,y0=by+r*.4,y1=by+r*.4+(air?ll*.6:ll+r*.2);
-    cx.beginPath();cx.moveTo(x0,y0);if(pale)cx.lineTo(x0+sw*.4-s.dir*2.5,(y0+y1)/2);cx.lineTo(x0+sw,y1);cx.stroke();
+    const front=st?false:i>1,lx=bx+legX[i]*r*(st?1:s.dir),sw=air||st?0:Math.sin(s.leg+i*1.57+(i>1?Math.PI:0))*2.2*k,y0=by+r*.5,y1=by+r*.5+(air?ll*.55:ll+r*.15),ym=(y0+y1)/2;
+    const kn=st?0:(pale?-s.dir*2.5:(front?s.dir:-s.dir)*1);
+    cx.strokeStyle=pale?'#b0b0aa':'#161614';cx.beginPath();cx.moveTo(lx,y0);cx.lineTo(lx+sw*.4+kn,ym);cx.lineTo(lx+sw,y1);cx.stroke();
+    cx.fillStyle=pale?'#7a7a74':'#050505';cx.fillRect(Math.round(lx+sw-1),Math.round(y1-1),2,1);
   }
-  const wl=p2?195:242;
-  const wg=cx.createRadialGradient(bx-r*.3,by-r*.7,0,bx,by,r*1.45);wg.addColorStop(0,`rgb(${wl},${wl},${wl-6})`);wg.addColorStop(.6,`rgb(${wl*.62|0},${wl*.62|0},${wl*.6|0})`);wg.addColorStop(1,'#1e1e1c');cx.fillStyle=wg;BLOBS.forEach(([a,b,k])=>{cx.beginPath();cx.arc(bx+a*r,by+b*r,r*.6*k+r*.18,0,7);cx.fill()});
-  cx.fillStyle='#161616';s.dirt.forEach(([a,b])=>cx.fillRect(bx+a*r|0,by+b*r|0,1,1));
-  if(s.num){cx.save();cx.fillStyle='#b81414';cx.font='bold 10px monospace';cx.textAlign='center';cx.textBaseline='middle';cx.fillText(s.num,bx+(s.dir>0?-1:1),by+1);cx.restore()}
-  if(p2){cx.fillStyle='#8a0c0c';s.dirt.slice(0,4).forEach(([a,b])=>cx.fillRect(bx+a*r|0,by+r*.5+b*2|0,1,2))}
-  if(st){
-    const hx=bx,hy=by-r*.75,hw=r*.5,hh=r*.85;
-    cx.fillStyle=pale?'#d2d2cc':'#1c1c1c';
-    cx.beginPath();cx.ellipse(hx-hw-1.5,hy-hh*.45,2.4,1,-.5,0,7);cx.ellipse(hx+hw+1.5,hy-hh*.45,2.4,1,.5,0,7);cx.fill();
-    cx.beginPath();cx.ellipse(hx,hy,hw,hh,0,0,7);cx.fill();
-    cx.fillStyle='#000';[-1,1].forEach(k=>{cx.beginPath();cx.ellipse(hx+k*hw*.45,hy-hh*.18,hw*.33,hh*.26,0,0,7);cx.fill()});
-    if(!pale){const ex=clamp((ptr.x-hx)/60,-1,1),ey=clamp((ptr.y-hy)/60,-1,1);cx.fillStyle='#fff';[-1,1].forEach(k=>cx.fillRect(Math.round(hx+k*hw*.45+ex*.8),Math.round(hy-hh*.18+ey*.8),1,1))}
-    else{const mh=phase==='ending'?hh*.5:hh*.24;cx.fillStyle='#000';cx.beginPath();cx.ellipse(hx,hy+hh*.45,hw*.3,mh,0,0,7);cx.fill();
-      cx.strokeStyle='rgba(0,0,0,.6)';[-1,1].forEach(k=>{cx.beginPath();cx.moveTo(hx+k*hw*.45,hy);cx.lineTo(hx+k*hw*.5,hy+hh*.5);cx.stroke()})}
-  }else{
-    const hx=bx+s.dir*r*1.05,hy=by-r*.2;
-    cx.fillStyle='#1c1c1c';
-    cx.beginPath();cx.ellipse(hx-s.dir*r*.35,hy-r*.28,r*.26,r*.1,-s.dir*.6,0,7);cx.fill();
-    cx.beginPath();cx.ellipse(hx,hy,r*.56,r*.32,s.dir*.35,0,7);cx.fill();
-    cx.fillStyle='#b0b0b0';cx.fillRect(Math.round(hx+s.dir*r*.08),Math.round(hy-r*.12),1,1);
-  }
+  const sp=sheepSprite(r,st?'front':'side',pale,s.sd);
+  cx.save();if(!st&&s.dir<0){cx.translate(bx,0);cx.scale(-1,1);cx.translate(-bx,0)}
+  cx.drawImage(sp,Math.round(bx-sp.ox),Math.round(by-sp.oy));cx.restore();
+  if(s.num){cx.save();cx.fillStyle='#b81414';cx.font='bold 10px monospace';cx.textAlign='center';cx.textBaseline='middle';cx.fillText(s.num,bx+(s.dir>0?-2:2),by+1);cx.restore()}
 }
 
 /* ---------- 배경 ---------- */
@@ -409,8 +437,7 @@ function renderWatcher(h){
     const du=u+.004,dv=v-.11,hu=du*ca+dv*sa,hv=-du*sa+dv*ca+.11,fz=(nz(hu*320+3,hv*320)-.5)*.16+(fbm(hu*40,hv*40)-.5)*.14;
     const e1=Math.sqrt((hu/.048)**2+((hv-.08)/.056)**2),e2=Math.sqrt((hu/.031)**2+((hv-.142)/.046)**2),k=.25,hh=clamp(.5+.5*(e2-e1)/k,0,1),e=e2*(1-hh)+e1*hh-k*hh*(1-hh)+fz;
     if(e<1){let F=(.42+.55*Math.sqrt(1-e*e))*(.76+.38*hu/.048)+.06*GA(hu,hv,.01,.06,.03,.03);
-      const holes=[[-.02,.078,.0105,.0115],[.019,.096,.0085,.0095],[.006,.146,.0105,.0145]];
-      for(const[hx,hy,rx,ry]of holes){const q=Math.sqrt(((hu-hx)/rx)**2+((hv-hy)/ry)**2)+(nz(hu*400,hv*400)-.5)*.25;F-=.35*Math.exp(-((q-1.2)**2)/.08);if(q<1)F=.02+.05*smt(.5,1,q)}
+      const n2=nz(hu*300,hv*300);F=eyeShade(F,hu,hv,-.021,.08,.0145,.0125,.74,n2);F=eyeShade(F,hu,hv,.021,.09,.0128,.011,.74,n2);F=gapeMouth(F,hu,hv,.004,.15,.016,.03);
       L=F;a=Math.max(a,smt(1,.85,e))}
     if(a>0){L+=(nn-.5)*.22;const p=(y*W+x)*4,cc=clamp(L,0,1)*255|0;d[p]=d[p+1]=d[p+2]=cc;d[p+3]=clamp(a,0,1)*255|0}
   }
@@ -432,9 +459,43 @@ function drawWatcher(){
 function drawLost(){
   lostShow.forEach(o=>{cx.save();cx.translate(o.x,o.b);cx.scale(.45,.45);cx.translate(-o.x,-gy);drawSheep(o);cx.restore()});
 }
+let hImg=null,OP=3;
+function renderHand(S){
+  const W=Math.ceil(30*S),H=Math.ceil(38*S),EY=12,c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d'),img=g.createImageData(W,H),d=img.data;
+  const F=[[7.6,4.5,24.5,-.13],[12.6,5.1,31,-.04],[17.6,5,29.5,.05],[22.3,4.1,23,.15]];
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const px=(x+.5)/S,py=(y+.5)/S;let L=0,a=0;
+    if(py<EY+2.5){const hw=10.5+(py-EY)*.22,cx0=15,e=Math.abs(px-cx0)/hw;
+      if(e<1){L=.17+.2*Math.sqrt(1-e*e);for(const f of F){const k=(px-f[0])/1.4;L+=.08*Math.exp(-k*k)*smt(EY-9,EY,py);L+=.1*Math.exp(-k*k-((py-EY+.5)/1.2)**2)}
+        a=smt(EY-11,EY-2,py)*smt(1,.88,e)}}
+    let best=null,bd=9;
+    for(const[fx,w,tip,sp]of F){
+      const ax=fx,ay=EY-1.5,dx=Math.sin(sp),dy=Math.cos(sp),len=tip-ay;
+      let t=((px-ax)*dx+(py-ay)*dy)/len;t=clamp(t,0,1);
+      const bend=1.1*t*t,qx=ax+dx*t*len+bend*Math.sign(sp||.01)*.3,qy=ay+dy*t*len,dd=Math.hypot(px-qx,py-qy);
+      const r=w/2*(1-.22*t*t)+.18*Math.sin(t*10+fx);const m=dd/r;if(m<bd){bd=m;best={t,r,side:(px-qx)/r,len,dd}}
+    }
+    if(best&&bd<1.12){
+      const{t,r,side,len}=best;
+      if(bd>=1){L=Math.min(L||.06,.06);a=Math.max(a,.85)}
+      else{
+        const e=bd;L=.32+.5*Math.sqrt(1-e*e)*(.88-.22*side);
+        const tl=t*len;for(const k of [.34,.66]){const z=(tl-k*len)/.6;L-=.3*Math.exp(-z*z)*(1-e*.5);L-=.08*Math.exp(-(((tl-k*len-1.1)/1)**2))+.06*Math.sin(tl*6)*Math.exp(-z*z*.3)}
+        if(t>.82&&Math.abs(side)<.7){const nt=(t-.82)/.18;L=.58+.14*Math.sqrt(1-side*side)-.28*smt(.7,1,nt)-.2*smt(.45,.7,Math.abs(side))}
+        L-=.2*smt(.88,1,t)+.1*smt(0,.15,1-Math.abs(side))*0;
+        a=1;
+      }
+    }
+    if(a>0){L+=(nz(px*1.1+7,py*1.1)-.5)*.13;const p=(y*W+x)*4,cc=clamp(L,0,1)*255|0;d[p]=cc;d[p+1]=cc;d[p+2]=clamp(L+.025,0,1)*255|0;d[p+3]=clamp(a,0,1)*255|0}
+  }
+  g.putImageData(img,0,0);c.ey=EY*S;c.cxm=15*S;return c;
+}
+let hS=0;
+function drawHand(x,y,rot,al){const S=Math.round(3/OP*10)/10;if(!hImg||hS!==S){hImg=renderHand(S);hS=S}ox2.save();ox2.translate(x,y);ox2.rotate(rot);ox2.globalAlpha=al;ox2.drawImage(hImg,-Math.round(hImg.cxm),-hImg.ey);ox2.restore()}
 const oc=$('out'),ox2=oc.getContext('2d');
 function drawOut(){
-  const P=3,ow=Math.ceil(innerWidth/P),oh=Math.ceil(innerHeight/P);
+  const P=OP=Math.max(1.2,cv.getBoundingClientRect().width/LW),ow=Math.ceil(innerWidth/P),oh=Math.ceil(innerHeight/P);
   if(oc.width!==ow||oc.height!==oh){oc.width=ow;oc.height=oh}
   ox2.clearRect(0,0,ow,oh);
   if(!fing&&!edgeHands&&peekT<0)return;
@@ -453,9 +514,9 @@ function drawOut(){
   };
   if(fing){
     const a=(T-fing.t0),f=clamp(Math.min(a/1.6,(fing.dur-a)/1.2),0,1),e=f*f*(3-2*f);
-    if(a>fing.dur)fing=null;else{const x0=FL+FW*.62;[[0,14,.1,3.6],[5,18,-.05,4],[10.2,17,.02,3.9],[15.6,12,.2,3.4]].forEach(([dx,l,an,w])=>finger(x0+dx,FT-16,l*e+2,Math.PI/2+an,.28,w))}
+    if(a>fing.dur)fing=null;else drawHand(FL+FW*.7,FT-(1-e)*14*3/OP,0,e)
   }
-  if(edgeHands){[[0,14,3.6],[5,18,4],[10.2,17,3.9],[15.6,12,3.4]].forEach(([dy,l,w],i)=>{finger(FL-17,FT+FH*.4+dy,l,(i-1.5)*.06,.3,w);finger(FR+17,FT+FH*.55+dy,l,Math.PI-(i-1.5)*.06,-.3,w)})}
+  if(edgeHands){drawHand(FL,FT+FH*.42,-Math.PI/2,1);drawHand(FR,FT+FH*.6,Math.PI/2,1)}
   if(peekT>=0){
     const p=clamp((T-peekT)/3,0,1),hx=FR+5-(1-p)*10,hy=FT+FH*.34;
     ox2.save();ox2.beginPath();ox2.rect(FR,0,ow-FR,oh);ox2.clip();
@@ -464,14 +525,18 @@ function drawOut(){
     ox2.fillStyle='#000';ox2.beginPath();ox2.ellipse(hx+3.5,hy-2,1.8,1.9,0,0,7);ox2.fill();ox2.beginPath();ox2.ellipse(hx+2.5,hy+5,1.6,2.2,0,0,7);ox2.fill();
     ox2.restore();
   }
-  ox2.globalCompositeOperation='source-atop';ox2.fillStyle=isP2()?'rgba(150,70,25,.45)':'rgba(40,95,90,.38)';ox2.fillRect(0,0,ow,oh);ox2.globalCompositeOperation='source-over';
+  const im=ox2.getImageData(0,0,ow,oh),dd=im.data,ramp=P1.map((c,i)=>c.map((v,j)=>v+(P2[i][j]-v)*red));
+  for(let y=0;y<oh;y++)for(let x=0;x<ow;x++){const i=(y*ow+x)*4;if(dd[i+3]<8){dd[i+3]=0;continue}
+    const L=(dd[i]*.3+dd[i+1]*.59+dd[i+2]*.11)/255*(dd[i+3]/255),c=ramp[clamp(Math.round((L+(R0()-.5)*.08)*8+BAY[(y&3)*4+(x&3)]),0,8)];
+    dd[i]=c[0];dd[i+1]=c[1];dd[i+2]=c[2];dd[i+3]=dd[i+3]>110?255:0}
+  ox2.putImageData(im,0,0);
 }
 function askClose(n,txt){if(watch>=n)return;needClose=n;needSince=performance.now();flags.warnOpen=0;say(txt)}
 function opened(t){
   if(needClose){
     if(t>=2){const n=needClose;needClose=0;watch=Math.max(watch,n);bleat(hum(),.08);
       if(n===1)say('…조금 나아졌어요?');
-      if(n===2){say('…');fing={t0:T,dur:8}}
+      if(n===2){say('…')}
       if(n===3){const k=Math.max(lostN,3);lostShow=Array.from({length:k},(_,i)=>({x:8+i*(LW*.62/k)+R0()*6,b:gy-12,dir:1,kind:'normal',fs:true,leg:0,dirt:Array.from({length:9},()=>[(R0()-.5)*1.8,(R0()-.3)*1.2])}));say('다들 기다리고 있었어요.')}
       if(n===4){peekT=T;say('거의 다 왔어요.')}
     }else say('조금 더 오래 감아요.');
@@ -526,7 +591,7 @@ function ending(){
   phase='ending';frozen=true;say('…');
   later(1200,()=>{allStare=true;tone(60,2.5,'sine',.15)});
   later(3200,()=>say('이제 우리가 셀 차례예요.'));
-  later(4600,()=>{bleat(1,.1);later(250,()=>bleat(.95,.08));edgeHands=true});
+  later(4600,()=>{bleat(1,.1);later(250,()=>bleat(.95,.08))});
   later(6000,()=>{$('label').textContent='깨어 있는 사람';setCount(1);tone(98,1.2,'triangle',.1,-20);tone(98,1.2,'triangle',.1,25);document.title='1'});
   later(7800,()=>{darkT=1;$('say').style.opacity=0;$('hud').style.opacity=0});
   later(9500,()=>scare(.8));
